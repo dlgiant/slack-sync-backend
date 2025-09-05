@@ -14,6 +14,16 @@ const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth-simple'); // Use simpler OAuth implementation
 
 const app = express();
+
+// Trust proxy for ngrok
+app.set('trust proxy', true);
+
+// Add ngrok-skip-browser-warning header handling
+app.use((req, res, next) => {
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  next();
+});
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -23,9 +33,10 @@ const io = socketIo(server, {
     },
     methods: ['GET', 'POST', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning']
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 app.use(cors({
@@ -35,7 +46,8 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+  exposedHeaders: ['ngrok-skip-browser-warning']
 }));
 
 app.use(bodyParser.json());
@@ -105,9 +117,17 @@ slackEvents.on('error', (error) => {
 io.on('connection', (socket) => {
   console.log('New WebSocket connection established, ID:', socket.id);
   console.log('Total connected clients:', io.engine.clientsCount);
+  console.log('Client transport:', socket.conn.transport.name);
   
-  socket.on('disconnect', () => {
-    console.log('WebSocket connection closed, ID:', socket.id);
+  // Send a test event immediately on connection
+  socket.emit('test', { message: 'Connected to backend WebSocket' });
+  
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
+  });
+  
+  socket.on('disconnect', (reason) => {
+    console.log('WebSocket connection closed, ID:', socket.id, 'Reason:', reason);
     console.log('Remaining clients:', io.engine.clientsCount - 1);
   });
 });
