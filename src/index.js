@@ -9,6 +9,7 @@ const sequelize = require('./config/database');
 const { slackEvents } = require('./config/slack');
 const UserSyncService = require('./services/userSync');
 const Token = require('./models/Token');
+const UserStateDuration = require('./models/UserStateDuration');
 
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth-simple'); // Use simpler OAuth implementation
