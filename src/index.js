@@ -8,6 +8,7 @@ require('dotenv').config();
 const sequelize = require('./config/database');
 const { slackEvents } = require('./config/slack');
 const UserSyncService = require('./services/userSync');
+const Token = require('./models/Token');
 
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth-simple'); // Use simpler OAuth implementation
@@ -127,6 +128,9 @@ async function startServer() {
     
     await sequelize.sync({ alter: true });
     console.log('Database models synchronized.');
+    
+    // Try to load token from database first
+    await userSyncService.updateSlackClient();
     
     if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_BOT_TOKEN !== 'xoxb-your-bot-token') {
       try {

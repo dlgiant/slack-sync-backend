@@ -1,5 +1,6 @@
 const { WebClient } = require('@slack/web-api');
 const User = require('../models/User');
+const Token = require('../models/Token');
 
 class UserSyncService {
   constructor(io) {
@@ -10,16 +11,32 @@ class UserSyncService {
     this.startPresencePolling();
   }
 
-  updateSlackClient() {
-    const token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN || 'xoxb-your-bot-token';
-    this.slackClient = new WebClient(token);
+  async updateSlackClient() {
+    let token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;
+    
+    // If no valid token in env, try to load from database
+    if (!token || token === 'xoxb-your-bot-token') {
+      try {
+        const storedToken = await Token.findOne({ where: { type: 'user_token' } });
+        if (storedToken) {
+          token = storedToken.value;
+          // Update environment variables
+          process.env.SLACK_USER_TOKEN = token;
+          process.env.SLACK_BOT_TOKEN = token;
+        }
+      } catch (err) {
+        console.log('Could not load token from database:', err.message);
+      }
+    }
+    
+    this.slackClient = new WebClient(token || 'xoxb-your-bot-token');
   }
 
   async syncAllUsers() {
     try {
       console.log('Starting user sync with presence...');
       // Ensure we have the latest token
-      this.updateSlackClient();
+      await this.updateSlackClient();
       
       // Check if we have a valid token
       const token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;
@@ -96,7 +113,7 @@ class UserSyncService {
   async syncSingleUser(userId) {
     try {
       // Ensure we have the latest token
-      this.updateSlackClient();
+      await this.updateSlackClient();
       
       // Check if we have a valid token
       const token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;
@@ -260,7 +277,7 @@ class UserSyncService {
   async pollUserPresence() {
     try {
       // Ensure we have the latest token
-      this.updateSlackClient();
+      await this.updateSlackClient();
       
       // Check if we have a valid token
       const token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;

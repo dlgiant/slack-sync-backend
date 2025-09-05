@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const { slackConfig } = require('../config/slack');
+const Token = require('../models/Token');
 
 // Direct OAuth implementation without state verification
 router.get('/slack/install', async (req, res) => {
@@ -90,12 +91,35 @@ router.get('/slack/callback', async (req, res) => {
       return res.redirect(`${redirectUrl}?install=failed&error=no_token`);
     }
     
+    // Store tokens in database
+    await Token.upsert({
+      type: 'user_token',
+      value: userToken,
+      teamId: data.team?.id,
+      teamName: data.team?.name,
+      userId: data.authed_user?.id
+    }, {
+      where: { type: 'user_token' }
+    });
+    
+    // Also store as bot token for compatibility
+    await Token.upsert({
+      type: 'bot_token',
+      value: userToken,
+      teamId: data.team?.id,
+      teamName: data.team?.name,
+      userId: data.authed_user?.id
+    }, {
+      where: { type: 'bot_token' }
+    });
+    
     // Update environment variables
     process.env.SLACK_USER_TOKEN = userToken;
     process.env.SLACK_BOT_TOKEN = userToken; // Set both for compatibility
     
     console.log('OAuth successful! Team:', data.team?.name);
     console.log('User ID:', data.authed_user?.id);
+    console.log('Tokens stored in database');
     
     // Trigger initial sync
     const userSyncService = req.app.get('userSyncService');
@@ -137,7 +161,19 @@ router.get('/slack/callback', async (req, res) => {
 
 router.get('/slack/status', async (req, res) => {
   try {
-    const token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;
+    // First try to get token from database
+    let token = process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN;
+    
+    if (!token || token === 'xoxb-your-bot-token') {
+      // Try to load from database
+      const storedToken = await Token.findOne({ where: { type: 'user_token' } });
+      if (storedToken) {
+        token = storedToken.value;
+        // Update environment variables
+        process.env.SLACK_USER_TOKEN = token;
+        process.env.SLACK_BOT_TOKEN = token;
+      }
+    }
     
     if (!token || token === 'xoxb-your-bot-token') {
       return res.json({
