@@ -336,7 +336,7 @@ class UserSyncService {
         }
         
         // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       if (changedCount > 0) {
@@ -348,9 +348,9 @@ class UserSyncService {
   }
 
   startPresencePolling() {
-    // Poll every 5 seconds for more real-time updates
-    // Safe for up to 10 users (10 users * 12 req/min = 120 req/min, under Slack's limits)
-    const POLLING_INTERVAL = 5000; // 5 seconds
+    // Poll every 10 seconds for more real-time updates
+    // Safe for up to 20 users (20 users * 6 req/min = 120 req/min, under Slack's limits)
+    const POLLING_INTERVAL = 10000; // 10 seconds
     
     // Clear any existing interval
     if (this.presencePollingInterval) {
@@ -367,7 +367,7 @@ class UserSyncService {
       this.pollUserPresence();
     }, 3000);
     
-    console.log('Started presence polling (every 5 seconds)');
+    console.log('Started presence polling (every 10 seconds)');
   }
 
   stopPresencePolling() {
