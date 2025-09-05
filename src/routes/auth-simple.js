@@ -6,7 +6,9 @@ const { slackConfig } = require('../config/slack');
 // Direct OAuth implementation without state verification
 router.get('/slack/install', async (req, res) => {
   try {
-    const baseUrl = process.env.NGROK_DOMAIN 
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : process.env.NGROK_DOMAIN 
       ? `https://${process.env.NGROK_DOMAIN}`
       : 'http://localhost:3001';
     
@@ -70,7 +72,7 @@ router.get('/slack/callback', async (req, res) => {
         client_id: slackConfig.clientId,
         client_secret: slackConfig.clientSecret,
         code: code,
-        redirect_uri: `${process.env.NGROK_DOMAIN ? `https://${process.env.NGROK_DOMAIN}` : 'http://localhost:3001'}/api/auth/slack/callback`
+        redirect_uri: `${process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : process.env.NGROK_DOMAIN ? `https://${process.env.NGROK_DOMAIN}` : 'http://localhost:3001'}/api/auth/slack/callback`
       }
     });
     
