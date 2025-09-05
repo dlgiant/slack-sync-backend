@@ -1,0 +1,27 @@
+{
+  "name": "slack-user-sync-backend",
+  "version": "1.0.0",
+  "description": "Backend service for syncing Slack workspace users",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "@slack/events-api": "^3.0.1",
+    "@slack/oauth": "^2.6.1",
+    "@slack/web-api": "^7.0.4",
+    "axios": "^1.11.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "sequelize": "^6.35.1",
+    "socket.io": "^4.6.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
