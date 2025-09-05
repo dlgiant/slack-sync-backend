@@ -1,6 +1,7 @@
 const { WebClient } = require('@slack/web-api');
 const User = require('../models/User');
 const Token = require('../models/Token');
+const UserStateDuration = require('../models/UserStateDuration');
 
 class UserSyncService {
   constructor(io) {
@@ -85,6 +86,9 @@ class UserSyncService {
             isOnline
           };
           
+          // Record state duration for new presence
+          await this.recordStateDuration(slackUser.id, presence);
+          
           const [user, created] = await User.upsert(userData, {
             returning: true
           });
@@ -153,6 +157,10 @@ class UserSyncService {
         presence,
         isOnline
       };
+      
+      // Record state duration for presence
+      await this.recordStateDuration(userId, presence);
+      
       const [user, created] = await User.upsert(userData, {
         returning: true
       });
@@ -208,6 +216,53 @@ class UserSyncService {
     };
   }
 
+  async recordStateDuration(userId, newState) {
+    try {
+      const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+      
+      // Find the latest ongoing state duration for this user
+      const latestDuration = await UserStateDuration.findOne({
+        where: {
+          userId: userId,
+          endTime: null
+        },
+        order: [['startTime', 'DESC']]
+      });
+
+      // If there's an ongoing state and it's different from the new state
+      if (latestDuration && latestDuration.state !== newState) {
+        // End the previous state
+        const duration = now - latestDuration.startTime;
+        await UserStateDuration.update(
+          {
+            endTime: now,
+            duration: duration
+          },
+          {
+            where: { id: latestDuration.id }
+          }
+        );
+
+        console.log(`Recorded ${latestDuration.state} duration for user ${userId}: ${duration} seconds`);
+      }
+
+      // Start new state duration record (only if it's actually a new state)
+      if (!latestDuration || latestDuration.state !== newState) {
+        await UserStateDuration.create({
+          userId: userId,
+          state: newState,
+          startTime: now,
+          endTime: null,
+          duration: null
+        });
+
+        console.log(`Started tracking ${newState} state for user ${userId}`);
+      }
+    } catch (error) {
+      console.error('Error recording state duration:', error);
+    }
+  }
+
   async handleUserChange(event) {
     try {
       const userData = this.mapSlackUserToDb(event.user);
@@ -238,6 +293,9 @@ class UserSyncService {
       const isOnline = presence === 'active';
       
       console.log(`Updating presence for user ${userId}: ${presence}`);
+      
+      // Record state duration BEFORE updating the user and emitting event
+      await this.recordStateDuration(userId, presence);
       
       // Update user presence in database
       const [updatedRows, users] = await User.update(
@@ -312,6 +370,9 @@ class UserSyncService {
             // Check if presence changed
             const cachedPresence = this.presenceCache.get(user.id);
             if (cachedPresence !== newPresence || user.presence !== newPresence) {
+              // Record state duration BEFORE updating and emitting
+              await this.recordStateDuration(user.id, newPresence);
+              
               // Update cache
               this.presenceCache.set(user.id, newPresence);
               
