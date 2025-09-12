@@ -13,6 +13,7 @@ const UserStateDuration = require('./models/UserStateDuration');
 
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth-simple'); // Use simpler OAuth implementation
+const analyticsRouter = require('./routes/analytics');
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.set('userSyncService', userSyncService);
 
 app.use('/api/users', usersRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // Slack Events API endpoint with URL verification
 app.post('/api/slack/events', (req, res) => {
@@ -147,7 +149,7 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
     
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ force: false });
     console.log('Database models synchronized.');
     
     // Try to load token from database first
