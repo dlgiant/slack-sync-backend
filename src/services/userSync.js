@@ -287,33 +287,46 @@ class UserSyncService {
       }
       
       // Get all users from database
-      const users = await User.findAll({
+      const dbUsers = await User.findAll({
         where: { deleted: false },
         attributes: ['id', 'name', 'realName', 'presence', 'isOnline']
       });
 
-      if (!users || users.length === 0) {
+      if (!dbUsers || dbUsers.length === 0) {
         return;
       }
 
-      console.log(`Checking presence for ${users.length} users...`);
+      console.log(`Checking presence for ${dbUsers.length} users with single API call...`);
       let changedCount = 0;
 
-      for (const user of users) {
-        try {
-          const presenceResult = await this.slackClient.users.getPresence({
-            user: user.id
-          });
+      try {
+        // Get all users with presence in a single API call
+        const result = await this.slackClient.users.list({
+          include_locale: false,
+          presence: true
+        });
 
-          if (presenceResult.ok) {
-            const newPresence = presenceResult.presence;
+        if (result.ok && result.members) {
+          const slackUsers = result.members.filter(member => !member.deleted);
+          
+          // Create a map for quick lookup
+          const dbUserMap = new Map(dbUsers.map(user => [user.id, user]));
+          
+          for (const slackUser of slackUsers) {
+            const dbUser = dbUserMap.get(slackUser.id);
+            if (!dbUser) continue; // Skip users not in our database
+            
+            const newPresence = slackUser.presence || 'away';
             const newIsOnline = newPresence === 'active';
             
             // Check if presence changed
-            const cachedPresence = this.presenceCache.get(user.id);
-            if (cachedPresence !== newPresence || user.presence !== newPresence) {
+            const cachedPresence = this.presenceCache.get(slackUser.id);
+            if (cachedPresence !== newPresence || dbUser.presence !== newPresence) {
+              // Record state duration BEFORE updating and emitting
+              await this.recordStateDuration(slackUser.id, newPresence);
+              
               // Update cache
-              this.presenceCache.set(user.id, newPresence);
+              this.presenceCache.set(slackUser.id, newPresence);
               
               // Update database
               await User.update(
@@ -323,37 +336,31 @@ class UserSyncService {
                   lastSyncedAt: new Date()
                 },
                 { 
-                  where: { id: user.id }
+                  where: { id: slackUser.id }
                 }
               );
               
               // Emit real-time update
               const eventData = {
-                userId: user.id,
+                userId: slackUser.id,
                 presence: newPresence,
                 isOnline: newIsOnline,
-                name: user.realName || user.name
+                name: dbUser.realName || dbUser.name
               };
               
-              console.log(`Emitting presence change for ${user.realName || user.name}: ${user.presence} -> ${newPresence}`);
+              console.log(`Emitting presence change for ${dbUser.realName || dbUser.name}: ${dbUser.presence} -> ${newPresence}`);
               this.io.emit('userPresenceChanged', eventData);
-              console.log('Event emitted:', eventData);
               changedCount++;
             }
           }
-        } catch (error) {
-          // Silently skip users we can't get presence for
-          if (error.message && error.message.includes('invalid_auth')) {
-            console.log('Authentication expired. Please reconnect to Slack.');
-            this.stopPresencePolling();
-            return;
-          } else if (!error.message || !error.message.includes('users_not_found')) {
-            // Only log non-expected errors
-          }
         }
-        
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        if (error.message && error.message.includes('invalid_auth')) {
+          console.log('Authentication expired. Please reconnect to Slack.');
+          this.stopPresencePolling();
+          return;
+        }
+        console.error('Error fetching users with presence:', error.message);
       }
 
       if (changedCount > 0) {
